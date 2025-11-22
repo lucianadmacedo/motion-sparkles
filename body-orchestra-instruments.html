@@ -164,6 +164,27 @@
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
             pointer-events: none;
         }
+
+        #tip {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            text-align: center;
+            font-size: 28px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+            pointer-events: none;
+            max-width: 800px;
+            padding: 30px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        #tip.hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -181,6 +202,10 @@
         <div class="body-parts-legend" id="legend">
             <h3>Body Parts → Instruments</h3>
             <!-- Will be populated by JavaScript -->
+        </div>
+
+        <div id="tip">
+            💡 <strong>Tip:</strong> Step back from your computer so your full body is visible to the camera. This allows you to make bigger movements and create richer sounds! 🎵
         </div>
 
         <div id="info">Move Your Body to Create Music! 🎵</div>
@@ -711,6 +736,9 @@
                 status.textContent = '✓ Orchestra ready! Move your body to play music!';
                 status.style.background = '#d4edda';
                 startBtn.style.display = 'none';
+
+                // Hide tip after starting
+                document.getElementById('tip').classList.add('hidden');
 
             } catch (err) {
                 status.textContent = '✗ Error: ' + err.message;
