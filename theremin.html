@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Theremin Sparkles - Interactive Instrument</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Arial', sans-serif;
+        }
+
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.2;
+            filter: blur(3px);
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: none;
+        }
+
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 25px;
+            border-radius: 15px;
+            z-index: 100;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            max-width: 300px;
+        }
+
+        #controls h2 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 24px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 20px;
+            line-height: 1.4;
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+            transition: all 0.3s;
+            margin-bottom: 10px;
+        }
+
+        #startBtn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        #startBtn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        }
+
+        #status {
+            margin-top: 15px;
+            padding: 12px;
+            background: #f0f0f0;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #333;
+            text-align: center;
+        }
+
+        #info {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            text-align: center;
+            font-size: 48px;
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.8);
+            pointer-events: none;
+            opacity: 0.8;
+        }
+
+        #info small {
+            display: block;
+            font-size: 24px;
+            margin-top: 10px;
+        }
+
+        .feedback {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 20px 40px;
+            border-radius: 15px;
+            display: flex;
+            gap: 30px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .feedback-item {
+            text-align: center;
+        }
+
+        .feedback-label {
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .feedback-value {
+            color: #333;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .pitch-bar {
+            position: absolute;
+            right: 30px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 50px;
+            height: 400px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 25px;
+            overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .pitch-indicator {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            background: linear-gradient(to top, #667eea, #764ba2);
+            transition: height 0.1s ease;
+        }
+
+        .volume-bar {
+            position: absolute;
+            left: 30px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 50px;
+            height: 400px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 25px;
+            overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .volume-indicator {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            background: linear-gradient(to top, #f093fb, #f5576c);
+            transition: height 0.1s ease;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas"></canvas>
+
+        <div id="controls">
+            <h2>🎵 Theremin Sparkles</h2>
+            <p class="subtitle">Move your hands to play music! Left/Right = Pitch, Up/Down = Volume</p>
+            <button id="startBtn">Start Theremin</button>
+            <div id="status">Click start to begin playing!</div>
+        </div>
+
+        <div id="info">
+            Move Your Hands 🎵
+            <small>← Lower Pitch | Higher Pitch →</small>
+        </div>
+
+        <div class="volume-bar">
+            <div class="volume-indicator" id="volumeIndicator"></div>
+        </div>
+
+        <div class="pitch-bar">
+            <div class="pitch-indicator" id="pitchIndicator"></div>
+        </div>
+
+        <div class="feedback">
+            <div class="feedback-item">
+                <div class="feedback-label">Frequency</div>
+                <div class="feedback-value" id="freqDisplay">---</div>
+            </div>
+            <div class="feedback-item">
+                <div class="feedback-label">Volume</div>
+                <div class="feedback-value" id="volumeDisplay">---</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const status = document.getElementById('status');
+        const freqDisplay = document.getElementById('freqDisplay');
+        const volumeDisplay = document.getElementById('volumeDisplay');
+        const pitchIndicator = document.getElementById('pitchIndicator');
+        const volumeIndicator = document.getElementById('volumeIndicator');
+
+        let isRunning = false;
+        let particles = [];
+        let previousFrameData = null;
+        let handPosition = { x: 0.5, y: 0.5, detected: false }; // Normalized 0-1
+
+        // Audio setup
+        let audioContext = null;
+        let oscillator = null;
+        let gainNode = null;
+        let filterNode = null;
+
+        // Theremin frequency range (Hz)
+        const MIN_FREQ = 200;  // Low note
+        const MAX_FREQ = 2000; // High note
+
+        // Resize canvas
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Initialize Audio (Theremin)
+        function initAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+            // Create oscillator (continuous sound)
+            oscillator = audioContext.createOscillator();
+            oscillator.type = 'sine'; // Classic theremin sound
+
+            // Create filter for richer sound
+            filterNode = audioContext.createBiquadFilter();
+            filterNode.type = 'lowpass';
+            filterNode.frequency.value = 2000;
+            filterNode.Q.value = 1;
+
+            // Create gain node for volume control
+            gainNode = audioContext.createGain();
+            gainNode.gain.value = 0; // Start silent
+
+            // Connect audio graph
+            oscillator.connect(filterNode);
+            filterNode.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            // Start oscillator
+            oscillator.start();
+        }
+
+        // Update theremin sound based on hand position
+        function updateTheremin() {
+            if (!audioContext || !handPosition.detected) {
+                if (gainNode) gainNode.gain.value = 0;
+                return;
+            }
+
+            // X position controls pitch (left = low, right = high)
+            const frequency = MIN_FREQ + (handPosition.x * (MAX_FREQ - MIN_FREQ));
+            oscillator.frequency.setTargetAtTime(frequency, audioContext.currentTime, 0.01);
+
+            // Y position controls volume (top = loud, bottom = quiet)
+            // Invert Y because screen coordinates are inverted (0 = top)
+            const volume = 1 - handPosition.y; // 0 at bottom, 1 at top
+            gainNode.gain.setTargetAtTime(volume * 0.5, audioContext.currentTime, 0.01);
+
+            // Update filter based on pitch for richer sound
+            filterNode.frequency.setTargetAtTime(frequency * 2, audioContext.currentTime, 0.01);
+
+            // Update UI
+            freqDisplay.textContent = Math.round(frequency) + ' Hz';
+            volumeDisplay.textContent = Math.round(volume * 100) + '%';
+            pitchIndicator.style.height = (handPosition.x * 100) + '%';
+            volumeIndicator.style.height = (volume * 100) + '%';
+        }
+
+        // Particle class (sparkles that follow hand)
+        class Particle {
+            constructor(x, y, hue) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.life = 1.0;
+                this.size = 3 + Math.random() * 5;
+                this.hue = hue;
+                this.decay = 0.01 + Math.random() * 0.01;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+                return this.life > 0;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = `hsl(${this.hue}, 100%, 70%)`;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = `hsl(${this.hue}, 100%, 70%)`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // Start camera
+        startBtn.addEventListener('click', async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480 }
+                });
+                video.srcObject = stream;
+                isRunning = true;
+                status.textContent = '✓ Theremin active! Move your hands to play!';
+                status.style.background = '#d4edda';
+                startBtn.style.display = 'none';
+
+                // Initialize audio
+                initAudio();
+
+                detectMotion();
+                animate();
+            } catch (err) {
+                status.textContent = '✗ Camera access denied: ' + err.message;
+                status.style.background = '#f8d7da';
+            }
+        });
+
+        // Motion detection canvas
+        const motionCanvas = document.createElement('canvas');
+        const motionCtx = motionCanvas.getContext('2d', { willReadFrequently: true });
+        motionCanvas.width = 80;
+        motionCanvas.height = 60;
+
+        // Detect hand position from motion
+        function detectMotion() {
+            if (!isRunning) return;
+
+            motionCtx.drawImage(video, 0, 0, motionCanvas.width, motionCanvas.height);
+            const currentFrameData = motionCtx.getImageData(0, 0, motionCanvas.width, motionCanvas.height);
+
+            if (previousFrameData) {
+                let totalX = 0;
+                let totalY = 0;
+                let motionCount = 0;
+
+                // Find all motion points
+                for (let y = 0; y < motionCanvas.height; y++) {
+                    for (let x = 0; x < motionCanvas.width; x++) {
+                        const i = (y * motionCanvas.width + x) * 4;
+                        const diff = Math.abs(currentFrameData.data[i] - previousFrameData.data[i]);
+
+                        if (diff > 30) { // Motion threshold
+                            totalX += x;
+                            totalY += y;
+                            motionCount++;
+                        }
+                    }
+                }
+
+                // Calculate average hand position
+                if (motionCount > 10) { // Minimum motion points to detect hand
+                    const avgX = totalX / motionCount;
+                    const avgY = totalY / motionCount;
+
+                    // Normalize to 0-1 range
+                    handPosition.x = avgX / motionCanvas.width;
+                    handPosition.y = avgY / motionCanvas.height;
+                    handPosition.detected = true;
+
+                    // Create sparkles at hand position
+                    const screenX = handPosition.x * canvas.width;
+                    const screenY = handPosition.y * canvas.height;
+
+                    // Hue based on pitch (color changes with hand position)
+                    const hue = handPosition.x * 360;
+
+                    // Create sparkles
+                    for (let i = 0; i < 5; i++) {
+                        particles.push(new Particle(screenX, screenY, hue));
+                    }
+
+                    // Update theremin sound
+                    updateTheremin();
+                } else {
+                    handPosition.detected = false;
+                    updateTheremin(); // Will silence the theremin
+                }
+            }
+
+            previousFrameData = currentFrameData;
+            setTimeout(detectMotion, 50); // 20 fps for motion detection
+        }
+
+        // Animation loop
+        function animate() {
+            if (!isRunning) return;
+
+            // Fade effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw and update particles
+            particles = particles.filter(particle => {
+                const alive = particle.update();
+                if (alive) particle.draw();
+                return alive;
+            });
+
+            // Draw hand position indicator (large glowing circle)
+            if (handPosition.detected) {
+                const x = handPosition.x * canvas.width;
+                const y = handPosition.y * canvas.height;
+                const hue = handPosition.x * 360;
+
+                ctx.save();
+                ctx.globalAlpha = 0.3;
+                ctx.fillStyle = `hsl(${hue}, 100%, 70%)`;
+                ctx.shadowBlur = 40;
+                ctx.shadowColor = `hsl(${hue}, 100%, 70%)`;
+                ctx.beginPath();
+                ctx.arc(x, y, 40, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            requestAnimationFrame(animate);
+        }
+    </script>
+</body>
+</html>

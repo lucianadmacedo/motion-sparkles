@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Body Orchestra - Play Music with Your Body</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #0F2027 0%, #203A43 50%, #2C5364 100%);
+            font-family: 'Arial', sans-serif;
+        }
+
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #video {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scaleX(-1);
+            max-width: 100%;
+            max-height: 100%;
+            opacity: 0.4;
+            filter: blur(1px);
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 25px;
+            border-radius: 15px;
+            z-index: 100;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            max-width: 350px;
+        }
+
+        #controls h2 {
+            margin-bottom: 10px;
+            color: #333;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+            transition: all 0.3s;
+            margin-bottom: 10px;
+        }
+
+        #startBtn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        #startBtn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        }
+
+        #status {
+            margin-top: 15px;
+            padding: 12px;
+            background: #f0f0f0;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #333;
+            text-align: center;
+        }
+
+        .body-parts-legend {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 15px;
+            max-width: 280px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .body-parts-legend h3 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 18px;
+        }
+
+        .body-part-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+
+        .body-part-item.active {
+            background: rgba(102, 126, 234, 0.2);
+            transform: scale(1.05);
+        }
+
+        .body-part-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .body-part-info {
+            flex: 1;
+        }
+
+        .body-part-name {
+            font-weight: bold;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .body-part-note {
+            font-size: 11px;
+            color: #666;
+        }
+
+        #info {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            text-align: center;
+            font-size: 32px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas"></canvas>
+
+        <div id="controls">
+            <h2>🎭 Body Orchestra</h2>
+            <p class="subtitle">Move different body parts to create harmonious music! Each part plays a different instrument.</p>
+            <button id="startBtn">Start Orchestra</button>
+            <div id="status">Click start to begin!</div>
+        </div>
+
+        <div class="body-parts-legend" id="legend">
+            <h3>Body Parts → Instruments</h3>
+            <!-- Will be populated by JavaScript -->
+        </div>
+
+        <div id="info">Move Your Body to Create Music! 🎵</div>
+    </div>
+
+    <!-- MediaPipe Pose -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const status = document.getElementById('status');
+        const legend = document.getElementById('legend');
+
+        let isRunning = false;
+        let particles = [];
+        let audioContext = null;
+        let pose = null;
+
+        // Body parts configuration with orchestral instruments
+        const bodyParts = {
+            leftWrist: {
+                name: 'Left Hand',
+                instrument: 'Maraca',
+                color: '#FF6B6B',
+                landmark: 15,
+                active: false,
+                prevPos: null
+            },
+            rightWrist: {
+                name: 'Right Hand',
+                instrument: 'Maraca',
+                color: '#4ECDC4',
+                landmark: 16,
+                active: false,
+                prevPos: null
+            },
+            leftElbow: {
+                name: 'Left Elbow',
+                instrument: 'Snare Drum',
+                color: '#45B7D1',
+                landmark: 13,
+                active: false,
+                prevPos: null
+            },
+            rightElbow: {
+                name: 'Right Elbow',
+                instrument: 'Cymbal',
+                color: '#96CEB4',
+                landmark: 14,
+                active: false,
+                prevPos: null
+            },
+            leftShoulder: {
+                name: 'Left Shoulder',
+                instrument: 'Violin',
+                freq: 440.00,
+                color: '#FFEAA7',
+                landmark: 11,
+                active: false,
+                prevPos: null
+            },
+            rightShoulder: {
+                name: 'Right Shoulder',
+                instrument: 'Violin',
+                freq: 523.25,
+                color: '#DFE6E9',
+                landmark: 12,
+                active: false,
+                prevPos: null
+            },
+            leftKnee: {
+                name: 'Left Knee',
+                instrument: 'Bass Drum',
+                color: '#A29BFE',
+                landmark: 25,
+                active: false,
+                prevPos: null
+            },
+            rightKnee: {
+                name: 'Right Knee',
+                instrument: 'Bass Drum',
+                color: '#FD79A8',
+                landmark: 26,
+                active: false,
+                prevPos: null
+            },
+            nose: {
+                name: 'Head',
+                instrument: 'Cello',
+                freq: 196.00,
+                color: '#FDCB6E',
+                landmark: 0,
+                active: false,
+                prevPos: null
+            }
+        };
+
+        // Create legend
+        function createLegend() {
+            let html = '';
+            for (let key in bodyParts) {
+                const part = bodyParts[key];
+                html += `
+                    <div class="body-part-item" id="legend-${key}">
+                        <div class="body-part-color" style="background: ${part.color}"></div>
+                        <div class="body-part-info">
+                            <div class="body-part-name">${part.name}</div>
+                            <div class="body-part-note">${part.instrument}</div>
+                        </div>
+                    </div>
+                `;
+            }
+            legend.innerHTML = '<h3>Body Parts → Instruments</h3>' + html;
+        }
+        createLegend();
+
+        // Resize canvas
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Initialize Audio
+        function initAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        // Play instrument sound based on body part
+        function playBodyPartSound(bodyPart) {
+            if (!audioContext) return;
+
+            const now = audioContext.currentTime;
+            const instrument = bodyPart.instrument;
+
+            if (instrument === 'Maraca') {
+                playMaraca(now);
+            } else if (instrument === 'Violin') {
+                playViolin(now, bodyPart.freq);
+            } else if (instrument === 'Cello') {
+                playCello(now, bodyPart.freq);
+            } else if (instrument === 'Snare Drum') {
+                playSnareDrum(now);
+            } else if (instrument === 'Bass Drum') {
+                playBassDrum(now);
+            } else if (instrument === 'Cymbal') {
+                playCymbal(now);
+            }
+        }
+
+        // Maraca sound (white noise burst with high-pass filter)
+        function playMaraca(startTime) {
+            const duration = 0.1;
+
+            // Create noise buffer
+            const bufferSize = audioContext.sampleRate * duration;
+            const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            const data = buffer.getChannelData(0);
+
+            // Generate white noise
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+
+            const noise = audioContext.createBufferSource();
+            noise.buffer = buffer;
+
+            const filter = audioContext.createBiquadFilter();
+            filter.type = 'highpass';
+            filter.frequency.value = 5000;
+
+            const gain = audioContext.createGain();
+            gain.gain.setValueAtTime(0.3, startTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioContext.destination);
+
+            noise.start(startTime);
+            noise.stop(startTime + duration);
+        }
+
+        // Violin sound (sawtooth with vibrato)
+        function playViolin(startTime, freq) {
+            const duration = 0.6;
+
+            const osc = audioContext.createOscillator();
+            osc.type = 'sawtooth';
+            osc.frequency.value = freq;
+
+            // Vibrato
+            const vibrato = audioContext.createOscillator();
+            vibrato.frequency.value = 5;
+            const vibratoGain = audioContext.createGain();
+            vibratoGain.gain.value = 3;
+
+            vibrato.connect(vibratoGain);
+            vibratoGain.connect(osc.frequency);
+
+            const filter = audioContext.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.value = freq * 3;
+            filter.Q.value = 2;
+
+            const gain = audioContext.createGain();
+            gain.gain.setValueAtTime(0, startTime);
+            gain.gain.linearRampToValueAtTime(0.12, startTime + 0.1);
+            gain.gain.linearRampToValueAtTime(0.08, startTime + 0.3);
+            gain.gain.linearRampToValueAtTime(0, startTime + duration);
+
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioContext.destination);
+
+            osc.start(startTime);
+            vibrato.start(startTime);
+            osc.stop(startTime + duration);
+            vibrato.stop(startTime + duration);
+        }
+
+        // Cello sound (deep, rich sawtooth)
+        function playCello(startTime, freq) {
+            const duration = 0.8;
+
+            const osc = audioContext.createOscillator();
+            osc.type = 'sawtooth';
+            osc.frequency.value = freq;
+
+            const filter = audioContext.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.value = freq * 2;
+            filter.Q.value = 3;
+
+            const gain = audioContext.createGain();
+            gain.gain.setValueAtTime(0, startTime);
+            gain.gain.linearRampToValueAtTime(0.15, startTime + 0.15);
+            gain.gain.linearRampToValueAtTime(0.1, startTime + 0.4);
+            gain.gain.linearRampToValueAtTime(0, startTime + duration);
+
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioContext.destination);
+
+            osc.start(startTime);
+            osc.stop(startTime + duration);
+        }
+
+        // Snare drum sound (noise + tone)
+        function playSnareDrum(startTime) {
+            const duration = 0.15;
+
+            // Noise component
+            const bufferSize = audioContext.sampleRate * duration;
+            const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+
+            const noise = audioContext.createBufferSource();
+            noise.buffer = buffer;
+
+            const noiseFilter = audioContext.createBiquadFilter();
+            noiseFilter.type = 'highpass';
+            noiseFilter.frequency.value = 1000;
+
+            const noiseGain = audioContext.createGain();
+            noiseGain.gain.setValueAtTime(0.4, startTime);
+            noiseGain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+            noise.connect(noiseFilter);
+            noiseFilter.connect(noiseGain);
+            noiseGain.connect(audioContext.destination);
+
+            // Tone component
+            const osc = audioContext.createOscillator();
+            osc.frequency.value = 200;
+
+            const oscGain = audioContext.createGain();
+            oscGain.gain.setValueAtTime(0.3, startTime);
+            oscGain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+            osc.connect(oscGain);
+            oscGain.connect(audioContext.destination);
+
+            noise.start(startTime);
+            osc.start(startTime);
+            noise.stop(startTime + duration);
+            osc.stop(startTime + duration);
+        }
+
+        // Bass drum sound (low frequency thump)
+        function playBassDrum(startTime) {
+            const duration = 0.5;
+
+            const osc = audioContext.createOscillator();
+            osc.frequency.setValueAtTime(150, startTime);
+            osc.frequency.exponentialRampToValueAtTime(40, startTime + 0.1);
+
+            const gain = audioContext.createGain();
+            gain.gain.setValueAtTime(0.6, startTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+            osc.connect(gain);
+            gain.connect(audioContext.destination);
+
+            osc.start(startTime);
+            osc.stop(startTime + duration);
+        }
+
+        // Cymbal sound (metallic noise)
+        function playCymbal(startTime) {
+            const duration = 0.8;
+
+            const freqs = [3000, 3500, 4200, 4800, 5500];
+
+            freqs.forEach(freq => {
+                const osc = audioContext.createOscillator();
+                osc.type = 'square';
+                osc.frequency.value = freq + Math.random() * 100;
+
+                const oscGain = audioContext.createGain();
+                oscGain.gain.setValueAtTime(0.05, startTime);
+                oscGain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+                const filter = audioContext.createBiquadFilter();
+                filter.type = 'highpass';
+                filter.frequency.value = 2000;
+
+                osc.connect(filter);
+                filter.connect(oscGain);
+                oscGain.connect(audioContext.destination);
+
+                osc.start(startTime);
+                osc.stop(startTime + duration);
+            });
+        }
+
+        // Particle class
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = (Math.random() - 0.5) * 4;
+                this.life = 1.0;
+                this.size = 4 + Math.random() * 6;
+                this.color = color;
+                this.decay = 0.015 + Math.random() * 0.015;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.1; // Slight gravity
+                this.life -= this.decay;
+                return this.life > 0;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // Process pose results
+        function onPoseResults(results) {
+            if (!isRunning) return;
+
+            // Clear canvas
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Mirror the canvas to match video
+            ctx.save();
+            ctx.scale(-1, 1);
+            ctx.translate(-canvas.width, 0);
+
+            if (results.poseLandmarks) {
+                // Check each body part for movement
+                for (let key in bodyParts) {
+                    const part = bodyParts[key];
+                    const landmark = results.poseLandmarks[part.landmark];
+
+                    if (landmark) {
+                        // Convert to screen coordinates
+                        const x = landmark.x * canvas.width;
+                        const y = landmark.y * canvas.height;
+
+                        // Check if body part moved
+                        if (part.prevPos) {
+                            const dx = x - part.prevPos.x;
+                            const dy = y - part.prevPos.y;
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+
+                            // If moved significantly, play sound and create sparkles
+                            if (distance > 10) {
+                                if (!part.active) {
+                                    playBodyPartSound(part);
+                                    part.active = true;
+
+                                    // Activate legend item
+                                    document.getElementById(`legend-${key}`).classList.add('active');
+
+                                    // Create sparkles
+                                    for (let i = 0; i < 8; i++) {
+                                        particles.push(new Particle(x, y, part.color));
+                                    }
+
+                                    // Deactivate after short delay
+                                    setTimeout(() => {
+                                        part.active = false;
+                                        document.getElementById(`legend-${key}`).classList.remove('active');
+                                    }, 200);
+                                }
+                            }
+                        }
+
+                        // Update previous position
+                        part.prevPos = { x, y };
+
+                        // Draw body part indicator
+                        ctx.save();
+                        ctx.fillStyle = part.color;
+                        ctx.shadowBlur = 15;
+                        ctx.shadowColor = part.color;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 12, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                    }
+                }
+
+                // Draw skeleton connections
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = 2;
+                drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS);
+            }
+
+            // Update and draw particles
+            particles = particles.filter(particle => {
+                const alive = particle.update();
+                if (alive) particle.draw();
+                return alive;
+            });
+
+            // Restore canvas transformation
+            ctx.restore();
+
+            requestAnimationFrame(() => {});
+        }
+
+        // Helper to draw pose connections
+        function drawConnectors(ctx, landmarks, connections) {
+            for (let connection of connections) {
+                const start = landmarks[connection[0]];
+                const end = landmarks[connection[1]];
+                if (start && end) {
+                    ctx.beginPath();
+                    ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
+                    ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // Start button
+        startBtn.addEventListener('click', async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 1280, height: 720 }
+                });
+                video.srcObject = stream;
+
+                status.textContent = '✓ Loading pose detection...';
+                status.style.background = '#fff3cd';
+
+                // Initialize audio
+                initAudio();
+
+                // Initialize MediaPipe Pose
+                pose = new Pose({
+                    locateFile: (file) => {
+                        return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+                    }
+                });
+
+                pose.setOptions({
+                    modelComplexity: 1,
+                    smoothLandmarks: true,
+                    enableSegmentation: false,
+                    smoothSegmentation: false,
+                    minDetectionConfidence: 0.5,
+                    minTrackingConfidence: 0.5
+                });
+
+                pose.onResults(onPoseResults);
+
+                // Start pose detection
+                const camera = new Camera(video, {
+                    onFrame: async () => {
+                        if (isRunning) {
+                            await pose.send({ image: video });
+                        }
+                    },
+                    width: 1280,
+                    height: 720
+                });
+
+                camera.start();
+
+                isRunning = true;
+                status.textContent = '✓ Orchestra ready! Move your body to play music!';
+                status.style.background = '#d4edda';
+                startBtn.style.display = 'none';
+
+            } catch (err) {
+                status.textContent = '✗ Error: ' + err.message;
+                status.style.background = '#f8d7da';
+            }
+        });
+    </script>
+</body>
+</html>
